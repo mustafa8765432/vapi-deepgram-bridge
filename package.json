@@ -1,0 +1,16 @@
+{
+  "name": "vapi-deepgram-bridge",
+  "version": "1.0.0",
+  "description": "WebSocket bridge between Vapi and Deepgram Arabic STT",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ws": "^8.17.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
