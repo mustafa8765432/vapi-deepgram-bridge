@@ -55,7 +55,7 @@ wss.on("connection", (vapiSocket, req) => {
     const url =
       "wss://api.deepgram.com/v1/listen" +
       "?language=ar" +
-      "&model=nova-2-general" +
+      "&model=nova-3" +
       "&encoding=linear16" +
       `&sample_rate=${sampleRate}` +
       "&channels=1" +
