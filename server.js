@@ -28,6 +28,18 @@ server.listen(PORT, () => {
   console.log(`[Server] HTTP + WebSocket bridge listening on port ${PORT}`);
 });
 
+// Downmix linear16 stereo PCM to mono (average L + R per frame)
+function stereoToMono(buffer) {
+  const frames = Math.floor(buffer.length / 4);
+  const output = Buffer.alloc(frames * 2);
+  for (let i = 0; i < frames; i++) {
+    const l = buffer.readInt16LE(i * 4);
+    const r = buffer.readInt16LE(i * 4 + 2);
+    output.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round((l + r) / 2))), i * 2);
+  }
+  return output;
+}
+
 wss.on("connection", (vapiSocket, req) => {
   console.log("[Vapi] Client connected");
   console.log(`[Vapi] Headers: ${JSON.stringify(req.headers)}`);
@@ -37,17 +49,18 @@ wss.on("connection", (vapiSocket, req) => {
   let started = false;
   let audioBuffer = [];
   let messageCount = 0;
+  let vapiChannels = 1;
 
-  function connectToDeepgram(sampleRate, channels) {
+  function connectToDeepgram(sampleRate) {
     const url =
       "wss://api.deepgram.com/v1/listen" +
       "?language=ar" +
       "&model=nova-2" +
       "&encoding=linear16" +
       `&sample_rate=${sampleRate}` +
-      `&channels=${channels}`;
+      "&channels=1";
 
-    console.log(`[Deepgram] Opening connection — sample_rate=${sampleRate} channels=${channels}`);
+    console.log(`[Deepgram] Opening connection — sample_rate=${sampleRate} channels=1 (mono)`);
 
     const dgSocket = new WebSocket(url, {
       headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` },
@@ -113,26 +126,28 @@ wss.on("connection", (vapiSocket, req) => {
         console.log(`[Vapi] Parsed JSON message type: ${parsed.type}`);
         if (parsed.type === "start") {
           const sampleRate = parsed.sampleRate || parsed.sample_rate || 16000;
-          const channels = parsed.channels || 1;
+          vapiChannels = parsed.channels || 1;
           console.log("[Vapi] Start message received:", JSON.stringify(parsed));
           started = true;
-          deepgramSocket = connectToDeepgram(sampleRate, channels);
+          deepgramSocket = connectToDeepgram(sampleRate);
           return;
         }
       } catch (_) {
         // Not JSON — binary audio arrived before start message
         console.log("[Vapi] Binary audio before start — connecting with defaults (16000Hz mono)");
         started = true;
-        deepgramSocket = connectToDeepgram(16000, 1);
+        vapiChannels = 1;
+        deepgramSocket = connectToDeepgram(16000);
       }
     }
 
-    // Forward audio to Deepgram or buffer if still connecting
-    if (started) {
+    // Forward audio to Deepgram (downmix to mono if stereo) or buffer if still connecting
+    if (started && isBinary) {
+      const audio = vapiChannels === 2 ? stereoToMono(message) : message;
       if (deepgramSocket?.readyState === WebSocket.OPEN) {
-        deepgramSocket.send(message);
+        deepgramSocket.send(audio);
       } else {
-        audioBuffer.push(message);
+        audioBuffer.push(audio);
       }
     }
   });
