@@ -28,12 +28,15 @@ server.listen(PORT, () => {
   console.log(`[Server] HTTP + WebSocket bridge listening on port ${PORT}`);
 });
 
-wss.on("connection", (vapiSocket) => {
+wss.on("connection", (vapiSocket, req) => {
   console.log("[Vapi] Client connected");
+  console.log(`[Vapi] Headers: ${JSON.stringify(req.headers)}`);
+  console.log(`[Vapi] URL: ${req.url}`);
 
   let deepgramSocket = null;
   let started = false;
   let audioBuffer = [];
+  let messageCount = 0;
 
   function connectToDeepgram(sampleRate, channels) {
     const url =
@@ -91,13 +94,27 @@ wss.on("connection", (vapiSocket) => {
   }
 
   vapiSocket.on("message", (message) => {
+    messageCount++;
+    const isBinary = Buffer.isBuffer(message) || message instanceof ArrayBuffer;
+
+    if (messageCount <= 5) {
+      if (isBinary) {
+        console.log(`[Vapi] Message #${messageCount}: binary, ${message.length} bytes`);
+      } else {
+        console.log(`[Vapi] Message #${messageCount}: text, ${message.toString().substring(0, 500)}`);
+      }
+    } else if (messageCount % 100 === 0) {
+      console.log(`[Vapi] ${messageCount} messages received so far`);
+    }
+
     if (!started) {
       try {
         const parsed = JSON.parse(message.toString());
+        console.log(`[Vapi] Parsed JSON message type: ${parsed.type}`);
         if (parsed.type === "start") {
           const sampleRate = parsed.sampleRate || parsed.sample_rate || 16000;
           const channels = parsed.channels || 1;
-          console.log("[Vapi] Start message received:", parsed);
+          console.log("[Vapi] Start message received:", JSON.stringify(parsed));
           started = true;
           deepgramSocket = connectToDeepgram(sampleRate, channels);
           return;
@@ -120,8 +137,8 @@ wss.on("connection", (vapiSocket) => {
     }
   });
 
-  vapiSocket.on("close", () => {
-    console.log("[Vapi] Client disconnected");
+  vapiSocket.on("close", (code, reason) => {
+    console.log(`[Vapi] Client disconnected — code: ${code}, reason: ${reason?.toString() || "none"}, total messages: ${messageCount}`);
     audioBuffer = [];
     if (deepgramSocket?.readyState === WebSocket.OPEN) deepgramSocket.close();
   });
