@@ -13,8 +13,8 @@ const DEEPGRAM_URL =
   "wss://api.deepgram.com/v1/listen" +
   "?language=ar" +
   "&model=nova-2" +
-  "&encoding=linear16" +
-  "&sample_rate=16000" +
+  "&encoding=linear16&sample_rate=44100" +
+  "" +
   "&channels=2";
 
 // Create HTTP server with health check endpoint
