@@ -9,14 +9,6 @@ const WebSocket = require("ws");
 const PORT = process.env.PORT || 3000;
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 
-const DEEPGRAM_URL =
-  "wss://api.deepgram.com/v1/listen" +
-  "?language=ar" +
-  "&model=nova-2" +
-  "&encoding=linear16&sample_rate=44100" +
-  "" +
-  "&channels=2";
-
 // Create HTTP server with health check endpoint
 const server = http.createServer((req, res) => {
   if (req.url === "/healthz") {
@@ -41,15 +33,33 @@ wss.on("connection", (vapiSocket) => {
 
   let deepgramSocket = null;
   let started = false;
+  let audioBuffer = [];
 
-  function connectToDeepgram() {
-    console.log("[Deepgram] Opening connection...");
+  function connectToDeepgram(sampleRate, channels) {
+    const url =
+      "wss://api.deepgram.com/v1/listen" +
+      "?language=ar" +
+      "&model=nova-2" +
+      "&encoding=linear16" +
+      `&sample_rate=${sampleRate}` +
+      `&channels=${channels}`;
 
-    const dgSocket = new WebSocket(DEEPGRAM_URL, {
+    console.log(`[Deepgram] Opening connection — sample_rate=${sampleRate} channels=${channels}`);
+
+    const dgSocket = new WebSocket(url, {
       headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` },
     });
 
-    dgSocket.on("open", () => console.log("[Deepgram] Connection established"));
+    dgSocket.on("open", () => {
+      console.log("[Deepgram] Connection established");
+      if (audioBuffer.length > 0) {
+        console.log(`[Deepgram] Flushing ${audioBuffer.length} buffered audio chunks`);
+        for (const chunk of audioBuffer) {
+          dgSocket.send(chunk);
+        }
+        audioBuffer = [];
+      }
+    });
 
     dgSocket.on("message", (data) => {
       try {
@@ -81,34 +91,38 @@ wss.on("connection", (vapiSocket) => {
   }
 
   vapiSocket.on("message", (message) => {
-    // Handle start message (JSON)
     if (!started) {
       try {
         const parsed = JSON.parse(message.toString());
         if (parsed.type === "start") {
+          const sampleRate = parsed.sampleRate || parsed.sample_rate || 16000;
+          const channels = parsed.channels || 1;
           console.log("[Vapi] Start message received:", parsed);
           started = true;
-          deepgramSocket = connectToDeepgram();
+          deepgramSocket = connectToDeepgram(sampleRate, channels);
           return;
         }
       } catch (_) {
-        // Not JSON — binary audio received before start message
-        if (!started) {
-          console.log("[Vapi] Binary audio received before start, connecting to Deepgram...");
-          started = true;
-          deepgramSocket = connectToDeepgram();
-        }
+        // Not JSON — binary audio arrived before start message
+        console.log("[Vapi] Binary audio before start — connecting with defaults (16000Hz mono)");
+        started = true;
+        deepgramSocket = connectToDeepgram(16000, 1);
       }
     }
 
-    // Forward binary audio to Deepgram
-    if (started && deepgramSocket?.readyState === WebSocket.OPEN) {
-      deepgramSocket.send(message);
+    // Forward audio to Deepgram or buffer if still connecting
+    if (started) {
+      if (deepgramSocket?.readyState === WebSocket.OPEN) {
+        deepgramSocket.send(message);
+      } else {
+        audioBuffer.push(message);
+      }
     }
   });
 
   vapiSocket.on("close", () => {
     console.log("[Vapi] Client disconnected");
+    audioBuffer = [];
     if (deepgramSocket?.readyState === WebSocket.OPEN) deepgramSocket.close();
   });
 
