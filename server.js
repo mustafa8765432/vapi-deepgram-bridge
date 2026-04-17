@@ -30,7 +30,7 @@ const server = http.createServer((req, res) => {
 });
 
 // Attach WebSocket server to HTTP server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, path: "/transcriber" });
 
 server.listen(PORT, () => {
   console.log(`[Server] HTTP + WebSocket bridge listening on port ${PORT}`);
