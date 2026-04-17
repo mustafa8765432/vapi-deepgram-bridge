@@ -55,15 +55,26 @@ wss.on("connection", (vapiSocket, req) => {
     const url =
       "wss://api.deepgram.com/v1/listen" +
       "?language=ar" +
-      "&model=nova-2" +
+      "&model=nova-2-general" +
       "&encoding=linear16" +
       `&sample_rate=${sampleRate}` +
-      "&channels=1";
+      "&channels=1" +
+      "&interim_results=true" +
+      "&smart_format=true";
 
-    console.log(`[Deepgram] Opening connection — sample_rate=${sampleRate} channels=1 (mono)`);
+    console.log(`[Deepgram] Opening connection — URL: ${url.replace(DEEPGRAM_API_KEY, "***")}`);
 
     const dgSocket = new WebSocket(url, {
       headers: { Authorization: `Token ${DEEPGRAM_API_KEY}` },
+    });
+
+    // Capture actual HTTP error body when Deepgram rejects the upgrade
+    dgSocket.on("unexpected-response", (_req, res) => {
+      let body = "";
+      res.on("data", (chunk) => (body += chunk.toString()));
+      res.on("end", () => {
+        console.error(`[Deepgram] Rejected — status: ${res.statusCode}, body: ${body}`);
+      });
     });
 
     dgSocket.on("open", () => {
