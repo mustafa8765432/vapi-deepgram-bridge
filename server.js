@@ -19,7 +19,7 @@ const DEEPGRAM_URL =
 
 // Create HTTP server with health check endpoint
 const server = http.createServer((req, res) => {
-  if (req.url === "/health") {
+  if (req.url === "/healthz") {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("OK");
     console.log("[Health] Ping received — server is awake");
